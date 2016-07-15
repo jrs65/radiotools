@@ -117,7 +117,7 @@ def read(path):
 
         # Reassign data
         vis_data[pair_ind, pol_ind, time_ind] = data['data'][vis_ind]
-        uvw[pair_ind, time_ind] = data['uvw'][vis_ind]
+        uvw[pair_ind, time_ind] = data['uvw'][vis_ind] / np.pi  # Conversion to m
         weight[pair_ind, pol_ind, time_ind] = (~data['mask'][vis_ind]).astype(np.float64)
 
     new_data = {

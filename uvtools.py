@@ -249,16 +249,16 @@ class SkyCovariance(object):
         \left\langle s(\mathbf{u}) s^*(\mathb{u}) \right\angle = A_c \left(\frac{u}{u_0}\right)^beta + A_p
     """
 
-    clustered_amplitude = 70.0
+    clustered_amplitude = 5.0
     clustered_index = -1.5
     pivot_l = 1000
 
-    poisson_amplitude = 50.0
+    poisson_amplitude = 4.0
 
     def powerspectrum(self, l):
 
-        ps_amp = (self.clustered_amplitude * (l / self.pivot_l)**self.clustered_index
-            + self.poisson_amplitude)
+        ps_amp = (self.clustered_amplitude * (l / self.pivot_l)**self.clustered_index +
+                  self.poisson_amplitude)
 
         return ps_amp
 
@@ -278,7 +278,7 @@ class SkyCovariance(object):
             Sparse covariance matrix, or the diagonal of it (as `np.ndarray`)
         """
 
-        l = np.hypot(uv_grid[:, 0], uv_grid[:, 1])
+        l = 2 * np.pi * np.hypot(uv_grid[:, 0], uv_grid[:, 1])
         l = np.where(l == 0.0, 1.0, l)
 
         ps_amp = self.powerspectrum(l)
@@ -292,14 +292,14 @@ class SkyCovariance(object):
             return c_sky
 
 
-def covariance_band(uv_grid, u_start, u_end, mat=True):
+def covariance_band(uv_grid, l_start, l_end, mat=True):
     r"""Generate the covariance matrix for a power spectrum band.
 
     Parameters
     ----------
     uv_grid : np.ndarray[:, 2]
         Location in the UV-plane.
-    u_start, u_end : float
+    l_start, l_end : float
         Start and end of the power spectrum band.
     mat : bool, optional
         Return sparse covariance matrix. Otherwise, just return the diagonal.
@@ -318,9 +318,9 @@ def covariance_band(uv_grid, u_start, u_end, mat=True):
         \left\langle s(\mathbf{u}) s^*(\mathb{u}) \right\angle = A_c u^beta + A_p
     """
 
-    uv_dist = np.hypot(uv_grid[:, 0], uv_grid[:, 1])
+    l = 2 * np.pi * np.hypot(uv_grid[:, 0], uv_grid[:, 1])
 
-    mask = np.logical_and(uv_dist >= u_start, uv_dist < u_end)
+    mask = np.logical_and(l >= l_start, l < l_end)
 
     c_diag = np.concatenate([mask, mask]).astype(np.float64) / 2.0
 
