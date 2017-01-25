@@ -85,6 +85,36 @@ def fourier_h2f(nx, ny):
     return expansion_matrix.tocsr()
 
 
+def image_to_uv(img, shape_half=None):
+    """Take an image as a 2D array and generate the UV data.
+
+    Parameters
+    ----------
+    img : np.ndarray[nx, ny]
+        Image to transform.
+    shape_half : tuple, optional
+        Size of the (half-)UV plane.
+
+    Returns
+    -------
+    uv : np.ndarray[2 * nx, ny / 2 + 1]
+        UV format data in the right format.
+    """
+
+    uvc = np.fft.rfftn(img)
+
+    if shape_half is not None:
+
+        nxh = shape_half[0] / 2
+        ny = shape_half[1]
+
+        uvc = np.concatenate([uvc[:nxh, :ny], uvc[-nxh:, :ny]])
+
+    uvr = np.concatenate([uvc.real, uvc.imag])
+
+    return uvr
+
+
 def _uv_proj_dist(uv_grid, uv_pos, uv_max):
     """Generate a sparse matrix projecting from the full UV plane, into measurements.
 
@@ -169,11 +199,18 @@ def projection_uniform_beam(uv_grid, uv_pos, dish_size):
     mat : :class:`scipy.sparse.csr_matrix`
         Projection matrix.
     """
-    norm = 1.0 / (4 * np.pi * dish_size**2)
+
+    # Calculate the normalisation due to the dish size
+    norm = 1.0 / (np.pi * dish_size**2)
+
+    # We need to include the finite size of the grid in our projection
+    # This works for the moment
+    gs = np.abs(uv_grid[0] - uv_grid[1]).sum()
+    norm *= gs**2
 
     uvm = _uv_proj_dist(uv_grid, uv_pos, dish_size)
 
-    uvm.data *= norm
+    uvm.data[:] = norm
 
     return uvm
 
@@ -208,7 +245,7 @@ def grid(max_baseline, dish_size, max_freq, samp=10.0):
 
     max_uv = 1.2 * max_baseline / wavelength
 
-    num_uv = int(samp * max_baseline / dish_size)
+    num_uv = int(samp * max_uv * wavelength / dish_size)
 
     u1 = np.linspace(-max_uv, max_uv, 2 * num_uv, endpoint=False)
     u1 = np.fft.fftshift(u1)
@@ -219,6 +256,27 @@ def grid(max_baseline, dish_size, max_freq, samp=10.0):
 
     uv_half = np.dstack(np.broadcast_arrays(u1[:, np.newaxis],
                                             v1[np.newaxis, :]))
+
+    shape_full = uv_full.shape[:2]
+    shape_half = uv_half.shape[:2]
+
+    return shape_full, shape_half, uv_full.reshape(-1, 2), uv_half.reshape(-1, 2)
+
+
+def img_grid(shape, size):
+
+    spacing = np.array(size) / np.array(shape)
+
+    u1 = np.fft.fftfreq(shape[0], spacing[0])
+    v1 = np.fft.fftfreq(shape[1], spacing[1])
+
+    v2 = np.linspace(0, 0.5 / spacing[1], shape[1] // 2 + 1, endpoint=True)
+
+    uv_full = np.dstack(np.broadcast_arrays(u1[:, np.newaxis],
+                                            v1[np.newaxis, :]))
+
+    uv_half = np.dstack(np.broadcast_arrays(u1[:, np.newaxis],
+                                            v2[np.newaxis, :]))
 
     shape_full = uv_full.shape[:2]
     shape_half = uv_half.shape[:2]

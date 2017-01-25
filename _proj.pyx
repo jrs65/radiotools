@@ -1,4 +1,3 @@
-
 """A few miscellaneous Cython routines to speed up critical operations.
 """
 

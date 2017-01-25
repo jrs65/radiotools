@@ -88,6 +88,15 @@ def read_dict(path):
 
 def read(path):
     """More advanced file reader.
+
+    This will massage the data into a set of useful arrays in a dictionary.
+
+    - vis[baseline, polarisation, time, freq]
+    - weight[baseline, polarisation, time, freq]
+    - uvw[baseline, time, uvw]
+    - time[time]
+    - freq[freq]
+    - pair[baseline, 2]
     """
 
     data = read_dict(path)
