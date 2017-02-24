@@ -85,34 +85,6 @@ def fourier_h2f(nx, ny):
     return expansion_matrix.tocsr()
 
 
-def image_to_uv(img, shape_half=None):
-    """Take an image as a 2D array and generate the UV data.
-
-    Parameters
-    ----------
-    img : np.ndarray[nx, ny]
-        Image to transform.
-    shape_half : tuple, optional
-        Size of the (half-)UV plane.
-
-    Returns
-    -------
-    uv : np.ndarray[2 * nx, ny / 2 + 1]
-        UV format data in the right format.
-    """
-
-    uvc = np.fft.rfftn(img)
-
-    if shape_half is not None:
-
-        nxh = shape_half[0] / 2
-        ny = shape_half[1]
-
-        uvc = np.concatenate([uvc[:nxh, :ny], uvc[-nxh:, :ny]])
-
-    uvr = np.concatenate([uvc.real, uvc.imag])
-
-    return uvr
 
 
 def _uv_proj_dist(uv_grid, uv_pos, uv_max):
@@ -137,10 +109,10 @@ def _uv_proj_dist(uv_grid, uv_pos, uv_max):
 
     import _proj
 
-    msize = (2 * uv_pos.shape[0], 2 * uv_grid.shape[0])
-
     npos = uv_pos.shape[0]
-    ngrid = uv_grid.shape[0]
+    ngrid = uv_grid.shape[0] * uv_grid.shape[1]
+
+    msize = (2 * npos, 2 * ngrid)
 
     data_list = []
     i_list = []
@@ -148,7 +120,7 @@ def _uv_proj_dist(uv_grid, uv_pos, uv_max):
 
     for ui, uv in enumerate(uv_pos):
 
-        uv_dist, loc = _proj._offset_dist(uv_grid, uv[0], uv[1], uv_max)
+        uv_dist, loc = _proj._offset_dist_2d(uv_grid, uv[0], uv[1], uv_max)
 
         nloc = len(loc)
 
@@ -215,6 +187,48 @@ def projection_uniform_beam(uv_grid, uv_pos, dish_size):
     return uvm
 
 
+def projection_gaussian_beam(uv_grid, uv_pos, fwhm):
+    """Generate the sparse projection matrix for a Gaussian beam.
+
+    Parameters
+    ----------
+    uv_grid : np.ndarray
+        Co-ordinates of the UV-plane grid.
+    uv_pos : np.ndarray
+        Positions in the UV plane of each observation.
+    fwhm : float
+        Size of the dish in radians. Seriously float only, you can't pass in
+        an array even if you have different frequencies in here.
+
+    Returns
+    -------
+    mat : :class:`scipy.sparse.csr_matrix`
+        Projection matrix.
+    """
+
+    U_0 = 0.53 / fwhm
+
+    # Calculate the normalisation due to the dish size
+    norm = 1.0 / (np.pi * U_0**2)
+
+    # We need to include the finite size of the grid in our projection
+    # This works for the moment
+    gs = np.abs(uv_grid[0] - uv_grid[1]).sum()
+    norm *= gs**2
+
+    uvm = _uv_proj_dist(uv_grid, uv_pos, 3 * U_0)
+
+    uvm.data[:] = norm * np.exp(-1.0 * (uvm.data[:] / U_0)**2)
+
+    # We need to normalise the beam integral to unity to take into account the
+    # effects of pixelisation
+    beam_int = uvm.sum(axis=1).view(np.ndarray)
+    beam_norm = np.where(beam_int == 0.0, 0.0, np.abs(1.0 / beam_int))
+    uvm = uvm.multiply(ss.csc_matrix(beam_norm))
+
+    return uvm
+
+
 def grid(max_baseline, dish_size, max_freq, samp=10.0):
     """Generate a co-ordinate grid in the UV-plane.
 
@@ -264,6 +278,26 @@ def grid(max_baseline, dish_size, max_freq, samp=10.0):
 
 
 def img_grid(shape, size):
+    """Generate a co-ordinate grid in the UV-plane that can represent a given image.
+
+    Parameters
+    ----------
+    shape : tuple
+        Image shape, i.e. pixels in each dimension (RA, DEC)
+    size : tuple
+        Image size in radians in the (RA, DEC) directions (but not the size in RA, DEC).
+
+    Returns
+    -------
+    shape_full : tuple
+        Shape for the full grid.
+    shape_half : tuple
+        Shape for the half FFT grid.
+    grid_full : np.ndarray[:, 2]
+        Points in the full grid.
+    grid_half : np.ndarray[:, 2]
+        Points in the half grid.
+    """
 
     spacing = np.array(size) / np.array(shape)
 
@@ -282,6 +316,63 @@ def img_grid(shape, size):
     shape_half = uv_half.shape[:2]
 
     return shape_full, shape_half, uv_full.reshape(-1, 2), uv_half.reshape(-1, 2)
+
+
+def image_to_uv(img, shape_half=None):
+    """Take an image as a 2D array and generate the UV data.
+
+    Parameters
+    ----------
+    img : np.ndarray[nx, ny]
+        Image to transform. Axes should be in order of (RA, DEC) directions.
+        Centre of the image should be at the centre of the array.
+    shape_half : tuple, optional
+        Size of the (half-)UV plane.
+
+    Returns
+    -------
+    uv : np.ndarray[2 * nx, ny / 2 + 1]
+        UV format data in the right format.
+    """
+
+    img = np.fft.fftshift(img)
+    uvc = np.fft.rfftn(img)
+
+    if shape_half is not None:
+
+        nxh = shape_half[0] / 2
+        ny = shape_half[1]
+
+        uvc = np.concatenate([uvc[:nxh, :ny], uvc[-nxh:, :ny]])
+
+    uvr = np.concatenate([uvc.real, uvc.imag])
+
+    return uvr
+
+
+def uv_to_image(uv, shape=None):
+    """Take UV data and transform into an image by FFT.
+
+    Parameters
+    ----------
+    uv : np.ndarray[2 * nx, ny / 2 + 1]
+        UV format data. The first axis is the real and imaginary parts for every
+        point in U, and the second axis is half of the V axis (only half because
+        the image space is real).
+
+    Returns
+    -------
+    img : np.ndarray[nx, ny]
+        Image to generated from the UV data. Should be (RA, DEC) axis order with
+        the centre of the image in the centre of the array.
+    """
+    nx = uv.shape[0] / 2
+
+    uvc = uv[:nx] + 1.0J * uv[nx:]
+
+    img = np.fft.irfftn(uvc, s=shape)
+
+    return np.fft.fftshift(img)
 
 
 class SkyCovariance(object):
