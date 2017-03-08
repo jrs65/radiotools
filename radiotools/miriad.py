@@ -42,6 +42,7 @@ def read_dict(path):
     sfreq = miriad_data['sfreq']  # GHz
     freq = np.arange(nfreq) * delta_freq + sfreq
 
+    # TODO: should generalise this to select other polarisation types
     miriad_data.select('polarization', -8, -5, include=True)
     miriad_data.select('polarization', -7, -5, include=True)
     miriad_data.select('polarization', -6, -5, include=True)
@@ -86,9 +87,21 @@ def read_dict(path):
     return data_dict
 
 
-def read(path):
+def read(path, stokes=True):
     """More advanced file reader.
 
+
+    Parameters
+    ----------
+    stokes : boolean, optional
+        Convert polarization into instrumental Stokes.
+
+    Returns
+    -------
+    data : dict
+
+    Notes
+    -----
     This will massage the data into a set of useful arrays in a dictionary.
 
     - vis[baseline, polarisation, time, freq]
@@ -128,6 +141,17 @@ def read(path):
         vis_data[pair_ind, pol_ind, time_ind] = data['data'][vis_ind]
         uvw[pair_ind, time_ind] = data['uvw'][vis_ind] / np.pi  # Conversion to m
         weight[pair_ind, pol_ind, time_ind] = (~data['mask'][vis_ind]).astype(np.float64)
+
+    if stokes:
+
+        vis_data_stokes = vis_data.copy()
+
+        vis_data_stokes[:, 0] = vis_data[:, 0] + vis_data[:, 3]  # I
+        vis_data_stokes[:, 1] = vis_data[:, 0] - vis_data[:, 3]  # Q
+        vis_data_stokes[:, 2] = vis_data[:, 2] + vis_data[:, 1]  # U
+        vis_data_stokes[:, 3] = vis_data[:, 2] - vis_data[:, 1]  # V
+
+        u_pol = np.array(['I', 'Q', 'U', 'V'])
 
     new_data = {
         'pair': u_pair,

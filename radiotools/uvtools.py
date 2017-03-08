@@ -85,8 +85,6 @@ def fourier_h2f(nx, ny):
     return expansion_matrix.tocsr()
 
 
-
-
 def _uv_proj_dist(uv_grid, uv_pos, uv_max):
     """Generate a sparse matrix projecting from the full UV plane, into measurements.
 
@@ -373,6 +371,156 @@ def uv_to_image(uv, shape=None):
     img = np.fft.irfftn(uvc, s=shape)
 
     return np.fft.fftshift(img)
+
+
+def projection_from_miriad(miriad_data, grid, fwhm):
+    """Construct a projection matrix from miriad data.
+
+    Parameters
+    ----------
+    miriad_data : dict
+        MIRIAD data as returned by `miriad.read`
+    grid : tuple
+        Grid definition as returned by one of `img_grid` or `grid`. This is a
+        tuple consisting of (shape of full grid, shape of half grid, UV
+        locations of full grid cells, UV locations of half grid cells)
+    fwhm : float
+        FWHM of the primary beam of the telescope (in radians).
+    """
+
+    # Unpack grid argument
+    shape_full, shape_half, grid_full, grid_half = grid
+
+    # Get base frequencies and wavelengths
+    frequencies = miriad_data['freq']
+    wavelengths = 0.299792 / frequencies
+    nfreq = len(frequencies)
+
+    if miriad_data['pol'][0] != 'I':
+        raise RuntimeError('Polarization is not instrumental Stokes.')
+
+    # Get the mask for Stokes I
+    weight = miriad_data['weight'][:, 0]
+    weight = weight.reshape(-1, nfreq)
+
+    fe = fourier_h2f(*shape_full)
+
+    # Get the antenna position as a function of time (in metres)
+    ant_pos = miriad_data['uvw'][..., :2].reshape(-1, 2)
+
+    uvp_list = []
+
+    # Iterate over all frequencies and generate the projection matrix for each
+    for fi, wavelength in enumerate(wavelengths):
+
+        # Calculate the UV positions in wavelengths
+        uv_pos = ant_pos / wavelength
+
+        # Get the projection matrix
+        uvm = projection_gaussian_beam(grid_full.reshape(shape_full + (2,)), uv_pos[:], fwhm)
+
+        # Construct the mask array and apply it
+        t = weight[:, fi]
+        w = ss.diags(np.concatenate([t, t]), 0)
+        uvm = w.dot(uvm)
+
+        # Apply the Fourier expansion matrix to make the projection be from the half plane
+        uvm = uvm.dot(fe)
+
+        # Add the projection to the list
+        uvp_list.append(uvm)
+
+    return uvp_list
+
+
+def projection_multi_frequency(proj, weight):
+    """Combine together a projection for individual frequencies into one from a
+    single scaled UV plane.
+
+    Parameters
+    ----------
+    proj : list
+        A sparse projection matrix for each frequenecy.
+    weight : np.ndarray
+        The weight to give each frequency.
+    """
+
+    weighted_proj = [p * w for p, w in zip(proj, weight)]
+
+    return ss.vstack(weighted_proj)
+
+
+def pack_vis(vis):
+    """Pack visibility data into a vector.
+
+    Parameters
+    ----------
+    vis : np.ndarray[baseline, time, freq]
+        Unpolarised visibility data
+
+    Returns
+    -------
+    vis_vec : np.ndarray[:]
+    """
+    # Get the frequency axis to the front
+    vis = vis.transpose((2, 0, 1))
+
+    # Turn the real and imaginary parts into a new axis
+    ds = np.concatenate((vis[:, np.newaxis].real, vis[:, np.newaxis].imag), axis=1)
+
+    # Flatten into a vector and return
+    return ds.flatten()
+
+
+def unpack_vis(vis_vec, shape):
+    """Unpack visibility vector into order for unpolarised data.
+
+    Parameters
+    ----------
+    vis_vec : np.ndarray[:]
+        Packed visibility data.
+    shape : tuple
+        Shape of the data (baseline, time, freq).
+
+    Returns
+    -------
+    vis_vec : np.ndarray[baseline, time, freq]
+        Unpolarised visibility data
+    """
+    vecr = vis_vec.reshape((shape[-1], 2) + shape[:-1])
+    return (vecr[:, 0] + 1.0J * vecr[:, 1]).transpose(1, 2, 0)
+
+
+def dirty_map(vis, proj_matrix, grid):
+    """Generate a quick dirty map.
+
+    Parameters
+    ----------
+    vis : np.ndarray[:]
+        Visibility vector.
+    proj_matrix : :class:`scipy.sparse.csr_matrix`
+        A sparse projection matrix.
+    grid : tuple
+        Grid definition.
+
+    Returns
+    -------
+    image : np.ndarray[:, :]
+    """
+
+    # Unpack grid argument
+    shape_full, shape_half, grid_full, grid_half = grid
+
+    dirty_uv_half = proj_matrix.T.dot(vis)
+
+    # bt = np.ones_like(vis)
+    # bt[(bt.size/2):] = 0.0
+    # dirty_b = proj_matrix.T.dot(bt)
+
+    # dirty_beam = uv_to_image(dirty_b.reshape(-1, shape_half[-1]))
+    dirty_map = uv_to_image(dirty_uv_half.reshape(-1, shape_half[-1]))
+
+    return dirty_map  # dirty_beam
 
 
 class SkyCovariance(object):
