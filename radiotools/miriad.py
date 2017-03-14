@@ -128,7 +128,7 @@ def read(path, stokes=True):
 
     vis_data = np.zeros((npair, npol, ntime, nfreq), dtype=data['data'].dtype)
     uvw = np.zeros((npair, ntime, 3), dtype=np.float64)
-    weight = np.zeros((npair, npol, ntime, nfreq), dtype=np.float64)
+    weight = np.zeros((npair, npol, ntime, nfreq), dtype=np.bool)
 
     for vis_ind in range(data['data'].shape[0]):
 
@@ -142,6 +142,8 @@ def read(path, stokes=True):
         uvw[pair_ind, time_ind] = data['uvw'][vis_ind] / np.pi  # Conversion to m
         weight[pair_ind, pol_ind, time_ind] = (~data['mask'][vis_ind]).astype(np.float64)
 
+    # Generate Stokes visibilities.
+    # Missing polarisations cause all Stokes parameters containing them to masked out.
     if stokes:
 
         vis_data_stokes = vis_data.copy()
@@ -150,6 +152,15 @@ def read(path, stokes=True):
         vis_data_stokes[:, 1] = vis_data[:, 0] - vis_data[:, 3]  # Q
         vis_data_stokes[:, 2] = vis_data[:, 2] + vis_data[:, 1]  # U
         vis_data_stokes[:, 3] = vis_data[:, 2] - vis_data[:, 1]  # V
+
+        weight_stokes = weight.copy()
+        weight_stokes[:, 0] = np.logical_and(weight[:, 0], weight[:, 3])
+        weight_stokes[:, 1] = np.logical_and(weight[:, 0], weight[:, 3])
+        weight_stokes[:, 2] = np.logical_and(weight[:, 1], weight[:, 2])
+        weight_stokes[:, 3] = np.logical_and(weight[:, 1], weight[:, 2])
+
+        vis_data = vis_data_stokes
+        weight = weight_stokes
 
         u_pol = np.array(['I', 'Q', 'U', 'V'])
 
