@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import numpy as np
 import scipy.sparse as ss
 
@@ -19,14 +26,14 @@ def fourier_h2f(nx, ny):
     mat : :class:`scipy.spare.csr_matrix`
     """
 
-    msize = (2 * nx * ny, 2 * nx * (ny / 2 + 1))
+    msize = (2 * nx * ny, 2 * nx * (ny // 2 + 1))
 
     data = np.zeros(msize[0], dtype=np.float64)
     i = np.zeros(msize[0], dtype=np.int)
     j = np.zeros(msize[0], dtype=np.int)
 
     def _copy_into(ld, li, lj, s):
-        e = s + ny / 2
+        e = s + ny // 2
         data[s:e] = ld
         i[s:e] = li
         j[s:e] = lj
@@ -34,16 +41,16 @@ def fourier_h2f(nx, ny):
     for ix in range(nx):
 
         # Set positive frequencies (real part)
-        td = np.ones(ny / 2)
-        ti = ix * ny + np.arange(ny / 2)
-        tj = ix * (ny / 2 + 1) + np.arange(ny / 2)
+        td = np.ones(ny // 2)
+        ti = ix * ny + np.arange(ny // 2)
+        tj = ix * (ny // 2 + 1) + np.arange(ny // 2)
         s = ix * ny
         _copy_into(td, ti, tj, s)
 
         # Set positive frequencies (imaginary part)
-        td = np.ones(ny / 2)
-        ti = (nx + ix) * ny + np.arange(ny / 2)
-        tj = (nx + ix) * (ny / 2 + 1) + np.arange(ny / 2)
+        td = np.ones(ny // 2)
+        ti = (nx + ix) * ny + np.arange(ny // 2)
+        tj = (nx + ix) * (ny // 2 + 1) + np.arange(ny // 2)
         s = (nx + ix) * ny
         _copy_into(td, ti, tj, s)
 
@@ -51,33 +58,33 @@ def fourier_h2f(nx, ny):
         if ix == 0:
 
             # Real part
-            td = np.ones(ny / 2)
-            ti = (ix + 1) * ny - np.arange(ny / 2) - 1
-            tj = ix * (ny / 2 + 1) + np.arange(ny / 2) + 1
-            s = ix * ny + ny / 2
+            td = np.ones(ny // 2)
+            ti = (ix + 1) * ny - np.arange(ny // 2) - 1
+            tj = ix * (ny // 2 + 1) + np.arange(ny // 2) + 1
+            s = ix * ny + ny // 2
             _copy_into(td, ti, tj, s)
 
             # Imag part
-            td = -np.ones(ny / 2)
-            ti = (nx + ix + 1) * ny - np.arange(ny / 2) - 1
-            tj = (nx + ix) * (ny / 2 + 1) + np.arange(ny / 2) + 1
-            s = (nx + ix) * ny + ny / 2
+            td = -np.ones(ny // 2)
+            ti = (nx + ix + 1) * ny - np.arange(ny // 2) - 1
+            tj = (nx + ix) * (ny // 2 + 1) + np.arange(ny // 2) + 1
+            s = (nx + ix) * ny + ny // 2
             _copy_into(td, ti, tj, s)
 
         # Negative freq (non-zero row)
         else:
             # Real part
-            td = np.ones(ny / 2)
-            ti = (nx - ix + 1) * ny - np.arange(ny / 2) - 1
-            tj = ix * (ny / 2 + 1) + np.arange(ny / 2) + 1
-            s = ix * ny + ny / 2
+            td = np.ones(ny // 2)
+            ti = (nx - ix + 1) * ny - np.arange(ny // 2) - 1
+            tj = ix * (ny // 2 + 1) + np.arange(ny // 2) + 1
+            s = ix * ny + ny // 2
             _copy_into(td, ti, tj, s)
 
             # Imag part
-            td = -np.ones(ny / 2)
-            ti = (2 * nx - ix + 1) * ny - np.arange(ny / 2) - 1
-            tj = (nx + ix) * (ny / 2 + 1) + np.arange(ny / 2) + 1
-            s = (nx + ix) * ny + ny / 2
+            td = -np.ones(ny // 2)
+            ti = (2 * nx - ix + 1) * ny - np.arange(ny // 2) - 1
+            tj = (nx + ix) * (ny // 2 + 1) + np.arange(ny // 2) + 1
+            s = (nx + ix) * ny + ny // 2
             _copy_into(td, ti, tj, s)
 
     expansion_matrix = ss.coo_matrix((data, (i, j)), shape=msize)
@@ -105,7 +112,7 @@ def _uv_proj_dist(uv_grid, uv_pos, uv_max):
     mat : :class:`scipy.spare.csr_matrix`
     """
 
-    import _proj
+    from . import _proj
 
     npos = uv_pos.shape[0]
     ngrid = uv_grid.shape[0] * uv_grid.shape[1]
@@ -297,7 +304,7 @@ def img_grid(shape, size):
         Points in the half grid.
     """
 
-    spacing = np.array(size) / np.array(shape)
+    spacing = np.array(size) // np.array(shape)
 
     u1 = np.fft.fftfreq(shape[0], spacing[0])
     v1 = np.fft.fftfreq(shape[1], spacing[1])
@@ -338,7 +345,7 @@ def image_to_uv(img, shape_half=None):
 
     if shape_half is not None:
 
-        nxh = shape_half[0] / 2
+        nxh = shape_half[0] // 2
         ny = shape_half[1]
 
         uvc = np.concatenate([uvc[:nxh, :ny], uvc[-nxh:, :ny]])
@@ -364,7 +371,7 @@ def uv_to_image(uv, shape=None):
         Image to generated from the UV data. Should be (RA, DEC) axis order with
         the centre of the image in the centre of the array.
     """
-    nx = uv.shape[0] / 2
+    nx = uv.shape[0] // 2
 
     uvc = uv[:nx] + 1.0J * uv[nx:]
 

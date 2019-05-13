@@ -1,3 +1,9 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
 
 import numpy as np
 
@@ -5,7 +11,7 @@ import scipy.linalg as la
 import scipy.sparse as ss
 import scipy.sparse.linalg as sla
 
-import uvtools
+from . import uvtools
 
 
 class PSEstimatorBase(object):
@@ -48,7 +54,7 @@ class PSEstimatorBase(object):
         self.sim = vis_simulation(self.grid, self.proj, self.sky.powerspectrum, self.noise)
 
         # Set up powerspectrum bands and sky covariances
-        self._bands = zip(self.l_bands[:-1], self.l_bands[1:])
+        self._bands = list(zip(self.l_bands[:-1], self.l_bands[1:]))
         self.l_centre = [ 0.5 * (ls + le) for ls, le in self._bands]
         self.C_a = np.array([
             uvtools.covariance_band(self.grid, ls, le, mat=False)
